@@ -17,19 +17,6 @@ import argparse
 from scipy import signal
 from paths import DICE
 
-dice_like = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 0, 0, 0, 0, 0, 0, 1, 1],
-             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
-
-sobel = [[-1, -2, -1], [0,  0,  0],  [1,  2,  1]]
-
 
 def main():
 	parser = argparse.ArgumentParser()
@@ -52,8 +39,8 @@ def main():
 	# Preprocess the image to obtain desired dimensions
 	image = cv2.imread(argl.image)
 	image = cv2.resize(image, (1000, 600))
-
 	fixed = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
 	# Apply a series of transformations to enhance the image
 	fixed = cv2.medianBlur(fixed, 5)
 
@@ -61,9 +48,6 @@ def main():
 
 	fixed = cv2.erode(fixed, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
 	fixed = cv2.dilate(fixed, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)))
-
-	edges = cv2.Canny(fixed, 50, 150)
-	image = cv2.drawContours(image, edges, -1, (0, 127, 255), 2)
 
 	stuff = cv2.connectedComponentsWithStats(fixed, connectivity=4, ltype=cv2.CV_32S)
 	num_labels = stuff[0]
@@ -78,8 +62,8 @@ def main():
 	dots_stats = dots_stuff[2]
 	dots_centroids = dots_stuff[3]
 
-	dots = cv2.dilate(dots, cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3)))
-	dots = cv2.erode(dots, cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5)))
+	dots = cv2.dilate(dots, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+	dots = cv2.erode(dots, cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
 
 	# Draws the centroids of what is detected as the dice
 	for cent in centroids:
@@ -88,27 +72,62 @@ def main():
 
 	for dots_cent in dots_centroids:
 		_ = _
-		# cv2.circle(image, (int(dots_cent[0]), int(dots_cent[1])), 4, (255, 0, 0), 2)
+		cv2.circle(image, (int(dots_cent[0]), int(dots_cent[1])), 4, (255, 0, 0), 2)
 
 	copy = fixed.copy()
 	dots_copy = dots.copy()
 	_, contours, _ = cv2.findContours(copy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 	_, numbers, _ = cv2.findContours(dots_copy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+	boxes = list()
+
 	for cnt in contours:
 		# approx = cv2.approxPolyDP(cnt, 0.01, True)
 		rect = cv2.minAreaRect(cnt)
 		box = cv2.boxPoints(rect)
 		box = np.int0(box)
-		# image = cv2.drawContours(image, [box], -1, (0, 127, 255), 2)
+		boxes.append(box)
+		image = cv2.drawContours(image, [box], -1, (0, 127, 255), 2)
 
 	# image = cv2.drawContours(image, contours, 1, (0, 127, 255), 2)
 	# image = cv2.drawContours(image, numbers, -1, (0, 255, 127), 2)
 
+	dot_counts = dict()
+
+	# Ignore index 0, it is the background
+	for i in range(1, len(boxes)):
+		box = boxes[i]
+		minx = np.argmin(box, axis=0)[0]
+		maxx = np.argmax(box, axis=0)[0]
+		miny = np.argmin(box, axis=1)[0]
+		maxy = np.argmax(box, axis=1)[0]
+
+		for dot in dots_centroids:
+			if ( dot[0] < box[minx][0] or dot[0] < box[maxx][0] ):
+				continue
+			if ( dot[1] < box[miny][1] or dot[1] > box[maxy][1] ):
+				continue
+
+			# Otherwise...
+			print( dot, box )
+			if not box.tostring() in dot_counts.keys():
+				dot_counts[box.tostring()] = 1
+			else:
+				dot_counts[box.tostring()] += 1
+
+	counts = np.array(np.zeros(6))
+	for key in dot_counts.keys():
+		counts[dot_counts[key]-1] += 1
+
+	print(counts)
+
 	fixed = cv2.cvtColor(fixed, cv2.COLOR_GRAY2BGR)
 	dots = cv2.cvtColor(dots, cv2.COLOR_GRAY2BGR)
 
-	both = np.hstack((image, fixed, dots))
+	# Print some stuff
+
+	# both = np.hstack((image, fixed, dots))
+	both = np.hstack((image, fixed))
 	cv2.imshow("Magic Dice", both)
 	cv2.waitKey(0)
 
