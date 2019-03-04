@@ -55,14 +55,15 @@ def main():
 
 	fixed = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 	# Apply a series of transformations to enhance the image
-	# fixed = cv2.GaussianBlur(fixed, (9, 9), 0)
 	fixed = cv2.medianBlur(fixed, 5)
 
 	_, fixed = cv2.threshold(fixed, 130, 255, cv2.THRESH_BINARY)
-	# kernel = np.ones((3, 3), np.uint8)
-	# fixed = cv2.adaptiveThreshold(fixed, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 7, 15)
-	# fixed = cv2.morphologyEx(fixed, cv2.MORPH_OPEN, kernel, iterations=1)
-	# fixed = cv2.equalizeHist(fixed)
+
+	fixed = cv2.erode(fixed, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+	fixed = cv2.dilate(fixed, cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)))
+
+	edges = cv2.Canny(fixed, 50, 150)
+	image = cv2.drawContours(image, edges, -1, (0, 127, 255), 2)
 
 	stuff = cv2.connectedComponentsWithStats(fixed, connectivity=4, ltype=cv2.CV_32S)
 	num_labels = stuff[0]
@@ -71,23 +72,43 @@ def main():
 	centroids = stuff[3]
 
 	_, dots = cv2.threshold(fixed, 0, 255, cv2.THRESH_BINARY_INV)
+	dots_stuff = cv2.connectedComponentsWithStats(dots, connectivity=4, ltype=cv2.CV_32S)
+	dots_num_labels = dots_stuff[0]
+	dots_labels = dots_stuff[1]
+	dots_stats = dots_stuff[2]
+	dots_centroids = dots_stuff[3]
 
+	dots = cv2.dilate(dots, cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3)))
+	dots = cv2.erode(dots, cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5)))
+
+	# Draws the centroids of what is detected as the dice
 	for cent in centroids:
-		cv2.rectangle(image, (int(cent[0]), int(cent[1])), (int(cent[0])+5, int(cent[1])+5), (0, 0, 255), 3)
+		_ = _
+		# cv2.rectangle(image, (int(cent[0]), int(cent[1])), (int(cent[0]), int(cent[1])), (0, 0, 255), 3)
+
+	for dots_cent in dots_centroids:
+		_ = _
+		# cv2.circle(image, (int(dots_cent[0]), int(dots_cent[1])), 4, (255, 0, 0), 2)
 
 	copy = fixed.copy()
+	dots_copy = dots.copy()
 	_, contours, _ = cv2.findContours(copy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+	_, numbers, _ = cv2.findContours(dots_copy, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-	huh = cv2.filter2D(fixed, 3, dots)
+	for cnt in contours:
+		# approx = cv2.approxPolyDP(cnt, 0.01, True)
+		rect = cv2.minAreaRect(cnt)
+		box = cv2.boxPoints(rect)
+		box = np.int0(box)
+		# image = cv2.drawContours(image, [box], -1, (0, 127, 255), 2)
 
-	image = cv2.drawContours(image, contours, -1, (0, 255, 127), 2)
-	#for cnt in contours:
-		# area = cv2.contourArea(cnt)
+	# image = cv2.drawContours(image, contours, 1, (0, 127, 255), 2)
+	# image = cv2.drawContours(image, numbers, -1, (0, 255, 127), 2)
 
 	fixed = cv2.cvtColor(fixed, cv2.COLOR_GRAY2BGR)
 	dots = cv2.cvtColor(dots, cv2.COLOR_GRAY2BGR)
 
-	both = np.hstack((image, fixed, dots, huh))
+	both = np.hstack((image, fixed, dots))
 	cv2.imshow("Magic Dice", both)
 	cv2.waitKey(0)
 
